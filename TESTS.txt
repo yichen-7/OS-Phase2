@@ -1,0 +1,6 @@
+test1 : alot of pereemption for HPF
+test2 : alot of proccess in the msg Q
+test3 : 1 process with 0 runtime
+test4 : sort by id
+test5 : process arrive when another is finishing 
+test6 : 1 process only
