@@ -18,6 +18,11 @@ typedef short bool;
 
 #define SHKEY 300
 #define MSGKEY 77
+#define RAM_KEY 215
+
+//shared memory for the RAM
+int *ram_shmaddr;
+
 
 
 // Enum to define all possible states of a process in the system
@@ -41,6 +46,9 @@ struct PCB {
     int start_time;          // The time the process started execution
     int finish_time;      // recorded when process signals completion
     int time_executed;    // total CPU time actually consumed
+    int page_table_frame; // The frame number where the process's page table is stored
+    int base;
+    int limit;
     enum ProcessState state; // Current state of the process
 };
 
