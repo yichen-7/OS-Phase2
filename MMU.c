@@ -2,9 +2,15 @@
 #include "headers.h"
 
 static FrameEntry frameTable[NUM_FRAMES];
+FILE *memory_log;
 
 extern struct PCB* getProcessById(int pid);// from scheduler.c by orashy
 extern void blockProcess(int pid, int page_number); // from scheduler.c by orashy
+
+void initMemoryLog() {
+    memory_log = fopen("memory.log", "w");
+}
+
 
 void initializeFrameTable() {// called once at system startup to set all frames as free and clear metadata
     for (int i = 0; i < NUM_FRAMES; i++) {
@@ -36,9 +42,10 @@ int translateAddress(int pid, int virtual_address, char rw) {
     PageTableEntry *pte = getPageTableEntry(pid, page_number);
     
     if (pte->valid == 0) {
-        // printf("DEBUG: fault detected for pid %d\n", pid);
-        blockProcess(pid, page_number); 
-        return -1; 
+        fprintf(memory_log, "PageFault upon VA 0x%x from process %d\n", virtual_address, pid);
+        fflush(memory_log);
+        blockProcess(pid, page_number);
+        return -1;
     }
 
     // sync NRU bits
@@ -105,22 +112,27 @@ int handlePageReplacement(int pid, int vpn) {
             break;
         }
     }
-    
+
+    if (target_frame != -1) {
+        fprintf(memory_log, "Free Physical page %d allocated\n", target_frame);
+        fflush(memory_log);
+    }
+
     // evict if full
     if (target_frame == -1) {
         target_frame = selectVictimFrame();
-        
-        // printf("DEBUG: evicting frame %d\n", target_frame);
-        
+
         if (isModified(target_frame)) {
-            delay = 20; 
+            delay = 20;
+            fprintf(memory_log, "Swapping out page %d to disk\n", target_frame);
+            fflush(memory_log);
         }
 
         // invalidate old owner
         int old_pid = frameTable[target_frame].pid;
         int old_vpn = frameTable[target_frame].virtual_page;
         PageTableEntry *old_pte = getPageTableEntry(old_pid, old_vpn);
-        
+
         if (old_pte) {
             old_pte->valid = 0;
             old_pte->frame_number = -1;
@@ -131,9 +143,9 @@ int handlePageReplacement(int pid, int vpn) {
     frameTable[target_frame].is_free = 0;
     frameTable[target_frame].pid = pid;
     frameTable[target_frame].virtual_page = vpn;
-    frameTable[target_frame].R = 0; 
+    frameTable[target_frame].R = 0;
     frameTable[target_frame].M = 0;
-    frameTable[target_frame].is_page_table = 0; 
+    frameTable[target_frame].is_page_table = 0;
 
     // link pte
     PageTableEntry *new_pte = getPageTableEntry(pid, vpn);
@@ -141,6 +153,12 @@ int handlePageReplacement(int pid, int vpn) {
     new_pte->frame_number = target_frame;
     new_pte->R = 0;
     new_pte->M = 0;
+
+    struct PCB *process = getProcessById(pid);
+    int disk_address = process->base + vpn;
+    fprintf(memory_log, "At time %d disk address %d for process %d is loaded into memory page %d.\n",
+            getClk(), disk_address, pid, target_frame);
+    fflush(memory_log);
 
     return delay;
 }

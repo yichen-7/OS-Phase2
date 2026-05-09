@@ -64,13 +64,29 @@ struct process
         int arrival;
         int runtime;
         int remainingTime;
+        int base;
+        int limit;
         
+    };
+
+    struct Request {
+        int time;
+        int address;
+        char actiontype;
     };
 
     struct message
     {
         long mtype;
         struct process p;
+    };
+
+    struct RequestMessage
+    {
+        long mtype;
+        int pid;
+        int address;
+        char actiontype;
     };
 
 ///==============================

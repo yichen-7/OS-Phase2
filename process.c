@@ -1,21 +1,16 @@
 #include "headers.h"
 
-/* Modify this file as needed*/
 int remainingtime;
-
+int runtime;
 int lasttime;
 
 void continue_handler(int sig)
 {
-    
-        //printf("Process %d received SIGCONT signal, resuming execution.\n", getpid());
-        lasttime = getClk(); // Update lasttime to the current clock time when resuming
-    
+    lasttime = getClk();
 }
 
 int main(int argc, char * argv[])
 {
-
     signal(SIGCONT, continue_handler);
 
     if (argc > 1)
@@ -26,29 +21,69 @@ int main(int argc, char * argv[])
         printf("Error: No remaining time provided for the process.\n");
         return 1;
     }
+
+    int id = 0;
+    if (argc > 2)
+        id = atoi(argv[2]);
+
+    runtime = remainingtime;
+
     initClk();
-    
-    //TODO it needs to get the remaining time from somewhere
-    //remainingtime = ??;
 
+    // Read request file for this process
+    struct Request requests[100];
+    int requestCount = 0;
+    int nextRequest = 0;
 
-     lasttime = getClk();
-     
+    char reqFileName[50];
+    sprintf(reqFileName, "requests_%d.txt", id);
+    FILE *reqFile = fopen(reqFileName, "r");
+    if (reqFile != NULL)
+    {
+        char line[100];
+        while (fgets(line, sizeof(line), reqFile) != NULL)
+        {
+            int t;
+            char addr[20];
+            char rw;
+            sscanf(line, "%d %s %c", &t, addr, &rw);
+            requests[requestCount].time = t;
+            requests[requestCount].address = (int)strtol(addr, NULL, 0);
+            requests[requestCount].actiontype = rw;
+            requestCount++;
+        }
+        fclose(reqFile);
+    }
+
+    int msgid = msgget(MSGKEY, 0666 | IPC_CREAT);
+
+    lasttime = getClk();
+
     while (remainingtime > 0)
     {
         int current_time = getClk();
-        if (current_time > lasttime) {
+        if (current_time > lasttime)
+        {
             remainingtime--;
             lasttime = current_time;
-            //printf("[Process %d] remaining time: %d\n", getpid(), remainingtime);
-            //printf("[Process %d] remaining time: %d at time %d\n", atoi(argv[2]), remainingtime, current_time);
+
+            int time_executed = runtime - remainingtime;
+
+            // Fire any requests whose time matches current CPU time consumed
+            while (nextRequest < requestCount && requests[nextRequest].time <= time_executed)
+            {
+                struct RequestMessage reqMsg;
+                reqMsg.mtype = 2;
+                reqMsg.pid = id;
+                reqMsg.address = requests[nextRequest].address;
+                reqMsg.actiontype = requests[nextRequest].actiontype;
+                msgsnd(msgid, &reqMsg, sizeof(struct RequestMessage) - sizeof(long), 0);
+                nextRequest++;
+            }
         }
-        
-        // remainingtime = ??;
     }
-    kill(getppid(), SIGUSR2); //notify the scheduler that the process has finished
-    
+
+    kill(getppid(), SIGUSR2);
     destroyClk(false);
-    
     return 0;
 }

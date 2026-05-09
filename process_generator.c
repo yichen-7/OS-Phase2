@@ -51,8 +51,8 @@ if (file == NULL) {
       }
       else {    
         
-        int id, arrival, runtime, priority;
-      sscanf(line, "%d%d%d%d", &id, &arrival, &runtime, &priority);
+        int id, arrival, runtime, priority , base , limit;
+      sscanf(line, "%d%d%d%d%d%d", &id, &arrival, &runtime, &priority, &base, &limit);
 
         if (runtime <= 0) {
             printf("\033[1;33mWarning: Process %d ignored because runtime is 0.\033[0m\n", id);
@@ -62,6 +62,8 @@ if (file == NULL) {
         processes[processCount].arrival = arrival;
         processes[processCount].runtime = runtime;
         processes[processCount].priority = priority;
+        processes[processCount].base = base;
+        processes[processCount].limit = limit;
         processes[processCount].remainingTime = runtime;
         processCount++;
 
@@ -78,6 +80,22 @@ if (file == NULL) {
             break;
         }
     }
+
+
+
+     
+    char line[100];
+  int time;
+  char address[20];  // read binary string
+  char actiontype;
+
+  while (fgets(line, sizeof(line), file) != NULL) {
+      if (line[0] == '#' || line[0] == '\n') continue;
+      sscanf(line, "%d %s %c", &time, address, &actiontype);
+
+      
+      int addr = strtol(address, NULL, 2); 
+  }
 
     // If someone arrived at 0, shift EVERYONE'S arrival time by 1
     if (shift_needed) {
