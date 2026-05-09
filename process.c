@@ -43,6 +43,7 @@ int main(int argc, char * argv[])
         char line[100];
         while (fgets(line, sizeof(line), reqFile) != NULL)
         {
+            if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') continue;
             int t;
             char addr[20];
             char rw;
