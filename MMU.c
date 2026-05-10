@@ -171,6 +171,7 @@ int allocatePageTable(int pid) {
             frameTable[i].is_page_table = 1; 
             frameTable[i].R = 0;
             frameTable[i].M = 0;
+            fprintf(memory_log, "Free Physical page %d allocated\n", i);
             return i; 
         }
     }

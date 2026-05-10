@@ -27,4 +27,14 @@ typedef struct {
 int translateAddress(int pid, int virtual_address, char rw);
 void freeProcessFrames(int pid);
 
+void initMemoryLog();
+void initializeFrameTable();
+int  allocatePageTable(int pid);
+void initializePageTable(int pt_frame);
+int  handlePageReplacement(int pid, int vpn);
+int  translateAddress(int pid, int virtual_address, char rw);
+void freeprocessframes(int pid);
+void resetReferencedBits();
+
 #endif
+

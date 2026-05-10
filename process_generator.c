@@ -84,18 +84,18 @@ if (file == NULL) {
 
 
      
-    char line[100];
-  int time;
-  char address[20];  // read binary string
-  char actiontype;
+//     char line[100];
+//   int time;
+//   char address[20];  // read binary string
+//   char actiontype;
 
-  while (fgets(line, sizeof(line), file) != NULL) {
-      if (line[0] == '#' || line[0] == '\n') continue;
-      sscanf(line, "%d %s %c", &time, address, &actiontype);
+//   while (fgets(line, sizeof(line), file) != NULL) {
+//       if (line[0] == '#' || line[0] == '\n') continue;
+//       sscanf(line, "%d %s %c", &time, address, &actiontype);
 
       
-      int addr = strtol(address, NULL, 2); 
-  }
+//       int addr = strtol(address, NULL, 2); 
+//   }
 
     // If someone arrived at 0, shift EVERYONE'S arrival time by 1
     if (shift_needed) {
@@ -119,6 +119,8 @@ if (file == NULL) {
     int schedulingAlgorithm;
     scanf("%d",&schedulingAlgorithm);
     int quantumTime = 0;
+    char K_str[10];
+    sprintf(K_str, "%d", 3);
    if ( schedulingAlgorithm == 2) {
         printf("Enter the time quantum for RR (must be a positive integer): ");
         
@@ -129,6 +131,15 @@ if (file == NULL) {
             // Clear the input buffer. This prevents an infinite loop if the user types a letter like 'z'
             while (getchar() != '\n'); 
         }
+
+        int K = 3; // default
+        printf("Enter K (R-bit clear interval in quantums): ");
+        while (scanf("%d", &K) != 1 || K <= 0) {
+            printf("Invalid. Enter a positive integer: ");
+            while (getchar() != '\n');
+        }
+        sprintf(K_str, "%d", K);
+
     }
     char algo_str[10];
   char quantum_str[10];
@@ -144,7 +155,8 @@ if (file == NULL) {
      //sleep(2);
     int schedulerpid = fork();
     if (schedulerpid == 0) {
-        execl("./scheduler.out", "./scheduler.out", algo_str, quantum_str, shift_str, NULL);
+    execl("./scheduler.out", "./scheduler.out", algo_str, quantum_str, shift_str, K_str, NULL);
+
     }
 
 
@@ -175,9 +187,6 @@ if (file == NULL) {
 
 
 
-    // 5. Create a data structure for processes and provide it with its parameters.
-    // 6. Send the information to the scheduler at the appropriate time.
-    // 7. Clear clock resources
     waitpid(schedulerpid, NULL, 0);
     destroyClk(true);
 }

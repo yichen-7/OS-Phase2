@@ -1,4 +1,7 @@
-#include "headers.h"
+#include"headers.h"
+#include "MMU.h"
+#include <string.h>  
+
 bool process_finished = false;
 // \ global to capture finish time precisely
 int finished_process_pid = -1;
@@ -7,7 +10,7 @@ int finish_recorded_time = -1;
 void handle_sigusr2(int sig) {
     if (sig == SIGUSR2) {
         process_finished = true;
-        finish_recorded_time = getClk(); // capture NOW, not later
+        finish_recorded_time = getClk(); 
     }
 }
 
@@ -208,12 +211,116 @@ void print_process(struct PCB process) {
 
 struct message schedulerMsg;
 
+int K = 3;   
+int quantum_count = 0;
+
+int cpu_ready_time = 0;
+struct PCB* current_process = NULL;
+
+//Phase 2 additions for blocked queue and page fault handling
+
+typedef struct BlockedNode {
+    struct PCB process;
+    int disk_done_at;
+    struct BlockedNode* next;
+} BlockedNode;
+
+BlockedNode* blocked_head = NULL;
+
+void addToBlockedQueue(struct PCB proc, int disk_done_at) {
+    BlockedNode* node = (BlockedNode*)malloc(sizeof(BlockedNode));
+    node->process     = proc;
+    node->disk_done_at = disk_done_at;
+    node->next        = NULL;
+    if (blocked_head == NULL) { blocked_head = node; return; }
+    BlockedNode* tail = blocked_head;
+    while (tail->next != NULL) tail = tail->next;
+    tail->next = node;
+}
+
+void checkBlockedQueue() {
+    BlockedNode* prev = NULL;
+    BlockedNode* curr = blocked_head;
+    while (curr != NULL) {
+        if (getClk() >= curr->disk_done_at) {
+            curr->process.state = STATE_STOPPED; // resume, don't re-fork
+            enqueue_rr(curr->process);
+            if (current_process == NULL) cpu_ready_time = getClk() + 1;
+            if (prev == NULL) blocked_head = curr->next;
+            else              prev->next   = curr->next;
+            BlockedNode* tmp = curr;
+            curr = curr->next;
+            free(tmp);
+        } else {
+            prev = curr;
+            curr = curr->next;
+        }
+    }
+}
+
+
+struct PCB* getProcessById(int pid) {
+    if (current_process != NULL && current_process->id == pid)
+        return current_process;
+    Node* node = head;
+    while (node != NULL) {
+        if (node->process.id == pid) return &node->process;
+        node = node->next;
+    }
+    BlockedNode* bnode = blocked_head;
+    while (bnode != NULL) {
+        if (bnode->process.id == pid) return &bnode->process;
+        bnode = bnode->next;
+    }
+    return NULL;
+}
+
+
+
+void blockProcess(int pid, int page_number) {
+    if (current_process == NULL || current_process->id != pid) return;
+
+    // Account for CPU time used before the fault
+    int time_spent = getClk() - current_process->start_time;
+    if (time_spent > 0) {
+        
+        current_process->time_executed += time_spent;
+        
+        current_process->remaining_time -= time_spent;
+    }
+
+    // Pause the child process
+    kill(current_process->system_pid, SIGSTOP);
+    current_process->state = STATE_STOPPED;
+
+    // Ask MMU to load the page and get the disk delay (10 or 20 ticks)
+    int delay = handlePageReplacement(pid, page_number);
+
+    // Push to blocked queue
+    addToBlockedQueue(*current_process, getClk() + delay);
+
+    free(current_process);
+    current_process = NULL;
+
+    // 1-tick context switch overhead
+    cpu_ready_time = isqueueEmpty() ? getClk() : getClk() + 1;
+}
+
+
 
 int main(int argc, char * argv[])
 {
     initClk();
 
-    int cpu_ready_time = 0; //For adding the 1 second overhead of context switching
+// Initialize physical RAM shared memory
+int ram_shmid = shmget(RAM_KEY, RAM_SIZE, IPC_CREAT | 0666);
+ram_shmaddr   = (int*) shmat(ram_shmid, NULL, 0);
+memset(ram_shmaddr, 0, RAM_SIZE);
+initializeFrameTable();
+initMemoryLog();
+
+// K comes as argv[4] from process_generator
+if (argc > 4) K = atoi(argv[4]);
 
     int turnoff_timer = -1; // To track when to destroy the clock and exit the scheduler (RR)
     int Algorithm = 1;
@@ -250,16 +357,19 @@ int main(int argc, char * argv[])
     
     printf("Scheduler started at time %d\n", getClk());
     signal(SIGUSR2, handle_sigusr2);
-    struct PCB* current_process = NULL;
+    //struct PCB* current_process = NULL;
     
     //TODO implement the scheduler :(
    int msgid = msgget(MSGKEY, 0666 | IPC_CREAT);
-   struct message schedulerMsg;
 
 
 
    while(1)
-   {             static int last_printed_time = -1;
+   {             
+    
+            checkBlockedQueue();
+
+                static int last_printed_time = -1;
                 if (getClk() != last_printed_time) {
                     // 1. Check if we are currently in the 1-second overhead period
                     if (getClk() < cpu_ready_time) 
@@ -292,6 +402,11 @@ int main(int argc, char * argv[])
             newpcb.priority = schedulerMsg.p.priority;
             newpcb.state = STATE_ARRIVED;
             newpcb.time_executed = 0;
+
+            //Phase 2 additions for memory management
+            newpcb.base = schedulerMsg.p.base;
+            newpcb.limit = schedulerMsg.p.limit;
+            newpcb.page_table_frame = -1; // Initialize to -1 to indicate no page table frame assigned yet
 
             // Terminal log for arrival
             printf("[Clock: %d] >> Process %d arrived (Priority: %d, Runtime: %d)\n",getClk(), newpcb.id, newpcb.priority, newpcb.runtime);  
@@ -342,6 +457,12 @@ int main(int argc, char * argv[])
         } // <================ REC_VAL BRACKET CLOSES HERE! =================>
         
         
+        struct RequestMessage reqMsg;
+        int req_val = msgrcv(msgid, &reqMsg, sizeof(struct RequestMessage) - sizeof(long), 2, IPC_NOWAIT);
+        if (req_val != -1) {
+            translateAddress(reqMsg.pid, reqMsg.address, reqMsg.actiontype);
+        }
+
         
             if (Algorithm == 1){
 
@@ -444,6 +565,7 @@ int main(int argc, char * argv[])
                     printf("Time %d: Process %d executed for %d units. Remaining: %d\n", getClk(), current_process->id, time_spent, current_process->remaining_time);
                     process_finished = false; // reset the flag for the next process
                     print_process_stats(current_process, finish_recorded_time);
+                    freeprocessframes(current_process->id); 
                     free(current_process);        
                     current_process = NULL;
                     if(!isqueueEmpty())
@@ -473,6 +595,11 @@ int main(int argc, char * argv[])
                     kill(current_process->system_pid, SIGSTOP);
                     log_process_state("stopped", current_process);
                     current_process->state = STATE_STOPPED;
+                       quantum_count++;
+                        if (quantum_count % K == 0) {
+                            resetReferencedBits();
+                        }
+                    
                     } 
 
 
@@ -543,6 +670,15 @@ int main(int argc, char * argv[])
                             current_process->state = STATE_STARTED;
                             current_process->start_time = getClk();
                             if (first_start_time == 0) first_start_time = getClk();
+                            
+                            // Allocate page table frame for this new process
+                            int pt_frame = allocatePageTable(current_process->id);
+                            current_process->page_table_frame = pt_frame;
+                            initializePageTable(pt_frame);
+
+                            // Load first page — no time penalty per spec
+                            handlePageReplacement(current_process->id, 0);
+                            
                             log_process_state("started", current_process);
                             printf("Process %d started at time %d\n", current_process->id, getClk());
                         }
@@ -561,7 +697,7 @@ int main(int argc, char * argv[])
             }
 
 
-            if (current_process == NULL && isqueueEmpty()) {
+            if (current_process == NULL && isqueueEmpty() && blocked_head == NULL) {
                  if (turnoff_timer == -1) {
                     turnoff_timer = getClk(); // start the turnoff timer
                         } else if (getClk() - turnoff_timer >= 10) 

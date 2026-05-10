@@ -89,10 +89,7 @@ struct process
         char actiontype;
     };
 
-///==============================
-//don't mess with this variable//
-int * shmaddr;                 //
-//===============================
+int * shmaddr;                 
 
 
 
