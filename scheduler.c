@@ -40,7 +40,6 @@ void handle_sigusr2(int sig) {
 }
 
 
-//!============================== Priority Queue Implementation ==============================!//
 typedef struct Node
 {
     struct PCB process;
@@ -107,7 +106,6 @@ struct PCB peek()
     }
     return head->process;
 }
-//!============================== End of Priority Queue Implementation ==============================!//
 
 bool enqueue_rr(struct PCB process)
 {
@@ -226,7 +224,7 @@ void print_process(struct PCB process) {
     fprintf(log_file, "At time %d process %d %s arr %d total %d remain %d wait %d\n", 
             getClk(), p->id, state, p->arrival_time, 
             p->runtime, p->remaining_time, get_current_wait(p));
-    fflush(log_file); // <--- IMPORTANT: This forces writing to the file immediately
+    fflush(log_file); // forces writing to the file immediately
     }
 
 
@@ -426,6 +424,7 @@ if (argc > 4) K = atoi(argv[4]);
    {             
     
             checkBlockedQueue();
+            checkPendingMemoryLogs();
 
                 static int last_checked_clk = -1;
                 if (getClk() != last_checked_clk) {
@@ -445,17 +444,17 @@ if (argc > 4) K = atoi(argv[4]);
 
                 static int last_printed_time = -1;
                 if (getClk() != last_printed_time) {
-                    // 1. Check if we are currently in the 1-second overhead period
+                    //Check if we are currently in the 1-second overhead period
                     if (getClk() < cpu_ready_time) 
                     {
                         // Highlighting Context Switching in Yellow
                         printf("\033[1;33m[Clock: %d] == Context Switching... (Overhead)\033[0m\n", getClk());
                         } 
-                    // 2. Check if a process is actually running
+                    //Check if a process is actually running
                     else if (current_process != NULL) {
                         printf("[Clock: %d] ## CPU is busy with Process %d\n", getClk(), current_process->id);
                     } 
-                    // 3. Otherwise, CPU is idle
+                    // Otherwise, CPU is idle
                     else {
                         printf("[Clock: %d] .. CPU is idle\n", getClk());
                     }
@@ -528,7 +527,7 @@ if (argc > 4) K = atoi(argv[4]);
             {
                 enqueue_rr(newpcb);
             }
-        } // <================ REC_VAL BRACKET CLOSES HERE! =================>
+        } 
         
         
         struct RequestMessage reqMsg;
@@ -542,22 +541,7 @@ if (argc > 4) K = atoi(argv[4]);
 
 
                 
-            // if (process_finished) {
-            //     // printf("Process finished at time %d\n", getClk());
-            //     log_process_state("finished", current_process);
-            //     // int TAT = getClk() - current_process->arrival_time;
-            //     // int WT = TAT - current_process->runtime;
-            //     // float WTAT = (float)TAT / current_process->runtime;
-            //     // printf("Waiting Time (WT) for process %d: %d\n", current_process->id, WT);
-            //     // printf("Turnaround Time (TAT) for process %d: %d\n", current_process->id, TAT);
-            //     // printf("Weighted Turnaround Time (WTAT) for process %d: %.2f\n", current_process->id, WTAT);
-
-            //     print_process_stats(current_process);
-
-            //     process_finished = false; // reset the flag for the next process
-            //     free(current_process); // free the memory allocated for the current process
-            //     current_process = NULL; // set the pointer to NULL after freeing
-            //     cpu_ready_time = getClk() + 1; // Add context switch overhead
+            
             // }
                 if (process_finished && current_process != NULL) 
                 { // <--- ALWAYS check for NULL
@@ -692,32 +676,13 @@ if (argc > 4) K = atoi(argv[4]);
                 }
 
                 else {
-                    // If queue is empty, don't stop. Just "renew" the quantum.
-                     // We update time_executed but keep the process running.
+                    
                     
                     int actual_execution = (current_process->remaining_time > quantum) ? quantum : current_process->remaining_time;
                         current_process->remaining_time -= actual_execution;
                         current_process->time_executed += actual_execution;
                         current_process->start_time = getClk();
-                        // If it still has time, it just keeps going. 
-                        // If it reached 0, the process_finished flag from the signal will handle it.
-                    // current_process->remaining_time = 0;
-                    // current_process->start_time = getClk();
-                    // if (first_start_time == 0) first_start_time = getClk();
-
-
-                    // kill(current_process->system_pid, SIGCONT);
-                    // current_process->state = STATE_RESUMED;
-                    // current_process->start_time = getClk();
-                    // log_process_state("resumed", current_process);
-                // current_process->time_executed += current_process->remaining_time;
-                // current_process->remaining_time = 0;
-                // kill(current_process->system_pid, SIGKILL);
-                // printf("[Clock: %d] Process %d finished via quantum expiry.\n", getClk(), current_process->id);
-                // print_process_stats(current_process, getClk());
-                // free(current_process);
-                // current_process = NULL;
-                // cpu_ready_time = getClk() + 1;
+                        
     }
 
             }
@@ -785,20 +750,7 @@ if (argc > 4) K = atoi(argv[4]);
                     else {
                     turnoff_timer = -1; // reset timer if there's work to do
             }
-            // // Handle termination after 10 seconds of idleness
-            //     if (current_process == NULL && isqueueEmpty()) 
-            //     {
-            //         if (turnoff_timer == -1) 
-            //             turnoff_timer = getClk(); // Start idle timer
-            //     }
-            //     else if (getClk() - turnoff_timer >= 10)  
-            //     { // If idle for 10 seconds, finalize report and exit
-            //             finalize_report(); // Report and exit
-            //     } 
-            //     else 
-            //     {
-            //         turnoff_timer = -1; // Reset timer if there's work to do
-            //     }
+            
 
                         
     } // <================== END OF WHILE(1) LOOP ==================>

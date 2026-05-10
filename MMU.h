@@ -72,5 +72,7 @@ int  handlePageReplacement(int pid, int vpn);
 int  translateAddress(int pid, int virtual_address, char rw);
 void freeprocessframes(int pid);
 void resetReferencedBits();
+bool isModified(int frame_index);
+void checkPendingMemoryLogs();
 
 #endif

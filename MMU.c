@@ -11,6 +11,16 @@ void initMemoryLog() {
     memory_log = fopen("memory.log", "w");
 }
 
+// Structure to store delayed memory log messages
+struct PendingLog {
+    int time;
+    int disk_addr;
+    int pid;
+    int frame;
+    int active;
+} pending_logs[100];
+int active_logs_count = 0;
+
 
 void initializeFrameTable() {// called once at system startup to set all frames as free and clear metadata
     for (int i = 0; i < NUM_FRAMES; i++) {
@@ -101,8 +111,36 @@ bool isModified(int frame_index) { //helper func
     return frameTable[frame_index].M == 1;
 }
 
+
+
+// Called by the scheduler every tick to print delayed memory logs
+void checkPendingMemoryLogs() {
+    if (active_logs_count == 0) return;
+
+    int current_time = getClk();
+    for(int i = 0; i < 100; i++) {
+        if(pending_logs[i].active && pending_logs[i].time == current_time) {
+            fprintf(memory_log, "At time %d disk address %d for process %d is loaded into memory page %d.\n",
+                    current_time, pending_logs[i].disk_addr, pending_logs[i].pid, pending_logs[i].frame);
+            fflush(memory_log);
+            pending_logs[i].active = 0; // Mark log as inactive
+            active_logs_count--;
+        }
+    }
+}
+
 int handlePageReplacement(int pid, int vpn) {
-    int delay = 10; //defualt delay for loading a page into RAM
+    // Check if this is the initial page load for the process
+    int is_initial = 1;
+    for (int i = 0; i < NUM_FRAMES; i++) {
+        // If a data page exists, it is not the initial load
+        if (frameTable[i].pid == pid && frameTable[i].is_page_table == 0) {
+            is_initial = 0;
+            break;
+        }
+    }
+
+    int delay = is_initial ? 0 : 10;
     int target_frame = -1;
 
     // check free frames
@@ -116,10 +154,9 @@ int handlePageReplacement(int pid, int vpn) {
     if (target_frame != -1) {
         fprintf(memory_log, "Free Physical page %d allocated\n", target_frame);
         fflush(memory_log);
-    }
-
-    // evict if full
-    if (target_frame == -1) {
+    } else {
+        // RAM full, page fault
+        delay = 10; 
         target_frame = selectVictimFrame();
 
         if (isModified(target_frame)) {
@@ -143,22 +180,38 @@ int handlePageReplacement(int pid, int vpn) {
     frameTable[target_frame].is_free = 0;
     frameTable[target_frame].pid = pid;
     frameTable[target_frame].virtual_page = vpn;
-    frameTable[target_frame].R = 0;
+    frameTable[target_frame].R = 1; 
     frameTable[target_frame].M = 0;
     frameTable[target_frame].is_page_table = 0;
 
-    // link pte
     PageTableEntry *new_pte = getPageTableEntry(pid, vpn);
     new_pte->valid = 1;
     new_pte->frame_number = target_frame;
-    new_pte->R = 0;
+    new_pte->R = 1; 
     new_pte->M = 0;
 
     struct PCB *process = getProcessById(pid);
     int disk_address = process->base + vpn;
-    fprintf(memory_log, "At time %d disk address %d for process %d is loaded into memory page %d.\n",
-            getClk(), disk_address, pid, target_frame);
-    fflush(memory_log);
+    
+    if (delay == 0) {
+        // Print immediately for initial load (no delay)
+        fprintf(memory_log, "At time %d disk address %d for process %d is loaded into memory page %d.\n",
+                getClk(), disk_address, pid, target_frame);
+        fflush(memory_log);
+    } else {
+        // Store log to be printed by the scheduler after disk delay
+        for(int i = 0; i < 100; i++) {
+            if(!pending_logs[i].active) {
+                pending_logs[i].time = getClk() + delay;
+                pending_logs[i].disk_addr = disk_address;
+                pending_logs[i].pid = pid;
+                pending_logs[i].frame = target_frame;
+                active_logs_count++;
+                pending_logs[i].active = 1;
+                break;
+            }
+        }
+    }
 
     return delay;
 }
