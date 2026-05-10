@@ -71,7 +71,7 @@ int main(int argc, char * argv[])
             int time_executed = runtime - remainingtime;
 
             // Fire any requests whose time matches current CPU time consumed
-            while (nextRequest < requestCount && requests[nextRequest].time <= time_executed)
+            while (nextRequest < requestCount && requests[nextRequest].time < time_executed)
             {
                 struct RequestMessage reqMsg;
                 reqMsg.mtype = 2;

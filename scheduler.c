@@ -7,28 +7,30 @@ bool process_finished = false;
 int finished_process_pid = -1;
 int finish_recorded_time = -1;
 
-int *ram_shmaddr;
-int *shmaddr;
+// int *ram_shmaddr;
+// int *shmaddr;
 
-int getClk() {
-    return *shmaddr;
-}
+// int getClk() {
+//     return *shmaddr;
+// }
 
-void initClk() {
-    int shmid = shmget(SHKEY, 4, 0444);
-    while ((int)shmid == -1) {
-        printf("Wait! The clock not initialized yet!\n");
-        sleep(1);
-        shmid = shmget(SHKEY, 4, 0444);
-    }
-    shmaddr = (int *) shmat(shmid, (void *)0, 0);
-}
+// void initClk() {
+//     int shmid = shmget(SHKEY, 4, 0444);
+//     while ((int)shmid == -1) {
+//         printf("Wait! The clock not initialized yet!\n");
+//         sleep(1);
+//         shmid = shmget(SHKEY, 4, 0444);
+//     }
+//     shmaddr = (int *) shmat(shmid, (void *)0, 0);
+// }
 
-void destroyClk(bool terminateAll) {
-    shmdt(shmaddr);
-    if (terminateAll)
-        killpg(getpgrp(), SIGINT);
-}
+// void destroyClk(bool terminateAll) {
+//     shmdt(shmaddr);
+//     if (terminateAll)
+//         killpg(getpgrp(), SIGINT);
+// }
+
+struct PCB* temp_pcb_for_mmu = NULL; // lets getProcessById find a displaced process
 
 void handle_sigusr2(int sig) {
     if (sig == SIGUSR2) {
@@ -285,6 +287,8 @@ void checkBlockedQueue() {
 struct PCB* getProcessById(int pid) {
     if (current_process != NULL && current_process->id == pid)
         return current_process;
+    if (temp_pcb_for_mmu != NULL && temp_pcb_for_mmu->id == pid)
+        return temp_pcb_for_mmu;
     Node* node = head;
     while (node != NULL) {
         if (node->process.id == pid) return &node->process;
@@ -298,35 +302,66 @@ struct PCB* getProcessById(int pid) {
     return NULL;
 }
 
+bool removeFromReadyQueue(int pid, struct PCB* result) {
+    Node* prev = NULL;
+    Node* curr = head;
+    while (curr != NULL) {
+        if (curr->process.id == pid) {
+            *result = curr->process;
+            if (prev == NULL) head = curr->next;
+            else             prev->next = curr->next;
+            free(curr);
+            return true;
+        }
+        prev = curr;
+        curr = curr->next;
+    }
+    return false;
+}
+
 
 
 void blockProcess(int pid, int page_number) {
-    if (current_process == NULL || current_process->id != pid) return;
+    struct PCB proc_to_block;
+    bool was_running = false;
 
-    // Account for CPU time used before the fault
-    int time_spent = getClk() - current_process->start_time;
-    if (time_spent > 0) {
-        
-        current_process->time_executed += time_spent;
-        
-        current_process->remaining_time -= time_spent;
+    if (current_process != NULL && current_process->id == pid) {
+        // Case 1: process is currently on the CPU
+        was_running = true;
+        int time_spent = getClk() - current_process->start_time;
+        if (time_spent > 0) {
+            current_process->time_executed  += time_spent;
+            current_process->remaining_time -= time_spent;
+        }
+        kill(current_process->system_pid, SIGSTOP);
+        current_process->state = STATE_STOPPED;
+        proc_to_block = *current_process;
+        // Do NOT touch current_process yet — handlePageReplacement needs
+        // getProcessById to find this process through current_process
+
+    } else if (removeFromReadyQueue(pid, &proc_to_block)) {
+        // Case 2: quantum expired, process was already re-queued
+        // Do NOT touch current_process — another process may be running
+        // Use temp pointer so getProcessById can find proc_to_block
+        temp_pcb_for_mmu = &proc_to_block;
+        was_running = false;
+
+    } else {
+        return; // process not found
     }
 
-    // Pause the child process
-    kill(current_process->system_pid, SIGSTOP);
-    current_process->state = STATE_STOPPED;
-
-    // Ask MMU to load the page and get the disk delay (10 or 20 ticks)
     int delay = handlePageReplacement(pid, page_number);
+    temp_pcb_for_mmu = NULL; // clear temp pointer
 
-    // Push to blocked queue
-    addToBlockedQueue(*current_process, getClk() + delay);
+    addToBlockedQueue(proc_to_block, getClk() + delay);
 
-    free(current_process);
-    current_process = NULL;
-
-    // 1-tick context switch overhead
-    cpu_ready_time = isqueueEmpty() ? getClk() : getClk() + 1;
+    if (was_running) {
+        // Only now free and vacate the CPU
+        free(current_process);
+        current_process = NULL;
+        cpu_ready_time = isqueueEmpty() ? getClk() : getClk() + 1;
+    }
+    // Case 2: current_process unchanged — whoever was running keeps running
 }
 
 
@@ -430,7 +465,7 @@ if (argc > 4) K = atoi(argv[4]);
 
 
 
-        int rec_val = msgrcv(msgid, &schedulerMsg, sizeof(struct message)-sizeof(long), 0, IPC_NOWAIT);
+        int rec_val = msgrcv(msgid, &schedulerMsg, sizeof(struct message)-sizeof(long), 1, IPC_NOWAIT);
         if (rec_val != -1)
         {
             struct PCB newpcb;
@@ -497,8 +532,7 @@ if (argc > 4) K = atoi(argv[4]);
         
         
         struct RequestMessage reqMsg;
-        int req_val = msgrcv(msgid, &reqMsg, sizeof(struct RequestMessage) - sizeof(long), 2, IPC_NOWAIT);
-        if (req_val != -1) {
+        while (msgrcv(msgid, &reqMsg, sizeof(struct RequestMessage) - sizeof(long), 2, IPC_NOWAIT) != -1) {
             translateAddress(reqMsg.pid, reqMsg.address, reqMsg.actiontype);
         }
 

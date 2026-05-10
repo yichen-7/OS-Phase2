@@ -1,5 +1,5 @@
 #include "MMU.h"
-#include "headers.h"
+//#include "headers.h"
 
 static FrameEntry frameTable[NUM_FRAMES];
 FILE *memory_log;

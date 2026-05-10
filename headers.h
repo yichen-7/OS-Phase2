@@ -1,3 +1,8 @@
+#ifndef HEADERS_H
+#define HEADERS_H
+
+#include "MMU.h"
+
 #include <stdio.h>      //if you don't use scanf/printf change this include
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -23,42 +28,10 @@ typedef short bool;
 //shared memory for the RAM
 int *ram_shmaddr;
 
-
-
-// Enum to define all possible states of a process in the system
-enum ProcessState {
-    STATE_ARRIVED,
-    STATE_STARTED,
-    STATE_STOPPED,
-    STATE_RESUMED,
-    STATE_FINISHED
-};
-
-// Process Control Block (PCB) structure to hold all process information
-struct PCB {
-    int id;                  // Process ID from the input file
-    int system_pid;          // Actual PID returned by fork() when the process starts
-    int arrival_time;        // The time the process arrived at the scheduler
-    int runtime;             // Total execution time required by the process
-    int remaining_time;      // Time left for the process to finish execution
-    int waiting_time;        // Total time the process spent waiting in the ready queue
-    int priority;            // Priority of the process (0 is the highest priority)
-    int start_time;          // The time the process started execution
-    int finish_time;      // recorded when process signals completion
-    int time_executed;    // total CPU time actually consumed
-    int page_table_frame; // The frame number where the process's page table is stored
-    int base;
-    int limit;
-    enum ProcessState state; // Current state of the process
-};
-
-
-
-
+// struct PCB and enum ProcessState are now in MMU.h
 
 struct process
     {
-       
         int id;
         int priority;
         int arrival;
@@ -66,7 +39,6 @@ struct process
         int remainingTime;
         int base;
         int limit;
-        
     };
 
     struct Request {
@@ -89,7 +61,10 @@ struct process
         char actiontype;
     };
 
-int * shmaddr;                 
+///==============================
+//don't mess with this variable//
+int * shmaddr;                 //
+//===============================
 
 
 
@@ -132,9 +107,6 @@ void destroyClk(bool terminateAll)
     {
         killpg(getpgrp(), SIGINT);
     }
-
-
-    
-    
 }
 
+#endif
