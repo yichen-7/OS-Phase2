@@ -46,3 +46,6 @@ At time 29 disk address 140 for process 15 is loaded into memory page 29.
 Free Physical page 30 allocated
 Free Physical page 31 allocated
 At time 31 disk address 150 for process 16 is loaded into memory page 31.
+PageFault upon VA 0x10 from process 2
+Swapping out page 1 to disk
+At time 36 disk address 11 for process 2 is loaded into memory page 1.
