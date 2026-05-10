@@ -163,7 +163,9 @@ int handlePageReplacement(int pid, int vpn) {
     return delay;
 }
 
+
 int allocatePageTable(int pid) {
+    // Try to find a free frame
     for (int i = 0; i < NUM_FRAMES; i++) {
         if (frameTable[i].is_free) {
             frameTable[i].is_free = 0;
@@ -175,8 +177,30 @@ int allocatePageTable(int pid) {
             return i; 
         }
     }
-    return -1; 
+    
+    int target_frame = selectVictimFrame();
+    
+    // Invalidate the old owner's Page Table Entry
+    int old_pid = frameTable[target_frame].pid;
+    int old_vpn = frameTable[target_frame].virtual_page;
+    PageTableEntry *old_pte = getPageTableEntry(old_pid, old_vpn);
+
+    if (old_pte) {
+        old_pte->valid = 0;
+        old_pte->frame_number = -1;
+    }
+
+    // Assign the frame to the new process as a Page Table
+    frameTable[target_frame].is_free = 0;
+    frameTable[target_frame].pid = pid;
+    frameTable[target_frame].is_page_table = 1; // Protects it from future eviction
+    frameTable[target_frame].R = 0;
+    frameTable[target_frame].M = 0;
+    
+    fprintf(memory_log, "Free Physical page %d allocated\n", target_frame);
+    return target_frame; 
 }
+
 
 void initializePageTable(int pt_frame) {
     char *pt_ptr = (char *)ram_shmaddr + (pt_frame * PAGE_SIZE);

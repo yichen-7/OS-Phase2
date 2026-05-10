@@ -7,6 +7,29 @@ bool process_finished = false;
 int finished_process_pid = -1;
 int finish_recorded_time = -1;
 
+int *ram_shmaddr;
+int *shmaddr;
+
+int getClk() {
+    return *shmaddr;
+}
+
+void initClk() {
+    int shmid = shmget(SHKEY, 4, 0444);
+    while ((int)shmid == -1) {
+        printf("Wait! The clock not initialized yet!\n");
+        sleep(1);
+        shmid = shmget(SHKEY, 4, 0444);
+    }
+    shmaddr = (int *) shmat(shmid, (void *)0, 0);
+}
+
+void destroyClk(bool terminateAll) {
+    shmdt(shmaddr);
+    if (terminateAll)
+        killpg(getpgrp(), SIGINT);
+}
+
 void handle_sigusr2(int sig) {
     if (sig == SIGUSR2) {
         process_finished = true;
@@ -368,6 +391,22 @@ if (argc > 4) K = atoi(argv[4]);
    {             
     
             checkBlockedQueue();
+
+                static int last_checked_clk = -1;
+                if (getClk() != last_checked_clk) {
+                    last_checked_clk = getClk();
+                    
+                    // If a process is actively running, count the system execution time
+                    if (current_process != NULL && getClk() >= cpu_ready_time) {
+                        static int system_active_ticks = 0;
+                        system_active_ticks++;
+                        
+                        // If the CPU has been active for exactly K * quantum ticks, reset bits
+                        if (system_active_ticks % (K * quantum) == 0) {
+                            resetReferencedBits();
+                        }
+                    }
+                }
 
                 static int last_printed_time = -1;
                 if (getClk() != last_printed_time) {
